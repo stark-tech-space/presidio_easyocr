@@ -50,7 +50,24 @@ class Server:
         if EASYOCR_AVAILABLE:
             ocr_languages = os.environ.get("OCR_LANGUAGES", "ch_tra,en").split(",")
             ocr_gpu = os.environ.get("OCR_GPU", "false").lower() == "true"
-            self.logger.info(f"Initializing EasyOCR with languages: {ocr_languages}")
+
+            # Log GPU availability
+            try:
+                import torch
+                cuda_available = torch.cuda.is_available()
+                if cuda_available:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    self.logger.info(f"CUDA available: {cuda_available}, GPU: {gpu_name}")
+                else:
+                    self.logger.warning("CUDA not available, EasyOCR will use CPU")
+                    if ocr_gpu:
+                        self.logger.warning("OCR_GPU=true but CUDA not available, falling back to CPU")
+                        ocr_gpu = False
+            except Exception as e:
+                self.logger.warning(f"Failed to check CUDA availability: {e}")
+                ocr_gpu = False
+
+            self.logger.info(f"Initializing EasyOCR with languages: {ocr_languages}, GPU: {ocr_gpu}")
             self.ocr = EasyOCREngine(lang_list=ocr_languages, gpu=ocr_gpu, verbose=False)
 
         # Initialize engines
