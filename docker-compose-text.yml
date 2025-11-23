@@ -1,17 +1,43 @@
 services:
   presidio-anonymizer:
-    image: ${REGISTRY_NAME}${IMAGE_PREFIX}presidio-anonymizer${TAG}
+    image: presidio-anonymizer:latest
     build:
       context: ./presidio-anonymizer
     environment:
       - PORT=5001
     ports:
       - "5001:5001"
+
   presidio-analyzer:
-    image: ${REGISTRY_NAME}${IMAGE_PREFIX}presidio-analyzer${TAG}
+    image: presidio-analyzer:latest
     build:
       context: ./presidio-analyzer
+      args:
+        # Chinese + English spaCy models (zh_core_web_trf + en_core_web_lg)
+        NLP_CONF_FILE: presidio_analyzer/conf/spacy_zh.yaml
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # NVIDIA recommended settings for PyTorch containers
+    ipc: host
+    shm_size: '8gb'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
     environment:
       - PORT=5001
+      - WORKERS=1
+      - TIMEOUT=300
+      - NLP_CONF_FILE=presidio_analyzer/conf/spacy_zh.yaml
+      - NVIDIA_VISIBLE_DEVICES=all
     ports:
       - "5002:5001"
