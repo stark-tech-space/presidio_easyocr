@@ -1,9 +1,33 @@
 services:
   presidio-image-redactor:
-    image: ${REGISTRY_NAME}${IMAGE_PREFIX}presidio-image-redactor${TAG}
+    image: presidio-image-redactor:latest
     build:
       context: ./presidio-image-redactor
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # NVIDIA recommended settings for PyTorch containers
+    ipc: host
+    shm_size: '8gb'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
     environment:
-      - PORT=5001
+      - PORT=3000
+      - WORKERS=1
+      - TIMEOUT=300
+      # EasyOCR: Traditional Chinese + English
+      - OCR_LANGUAGES=ch_tra,en
+      - OCR_GPU=true
+      - NVIDIA_VISIBLE_DEVICES=all
     ports:
-      - "5003:5001"
+      - "5003:3000"

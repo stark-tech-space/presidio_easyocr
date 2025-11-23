@@ -38,6 +38,9 @@ server = [
     "flask (>=1.1)",
     "gunicorn"
 ]
+easyocr = [
+    "easyocr (>=1.7.0,<2.0.0)"
+]
 
 [tool.poetry.group.dev.dependencies]
 pip = "*"

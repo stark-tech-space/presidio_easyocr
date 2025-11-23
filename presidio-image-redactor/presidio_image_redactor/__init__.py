@@ -6,6 +6,7 @@ import logging
 from .ocr import OCR
 from .tesseract_ocr import TesseractOCR
 from .document_intelligence_ocr import DocumentIntelligenceOCR
+from .easyocr_engine import EasyOCREngine
 from .bbox import BboxProcessor
 from .image_processing_engine import ImagePreprocessor
 from .image_analyzer_engine import ImageAnalyzerEngine
@@ -27,6 +28,7 @@ __all__ = [
     "OCR",
     "TesseractOCR",
     "DocumentIntelligenceOCR",
+    "EasyOCREngine",
     "BboxProcessor",
     "ImageAnalyzerEngine",
     "ImageRedactorEngine",

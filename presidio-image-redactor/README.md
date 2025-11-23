@@ -42,6 +42,96 @@ Presidio Analyzer:
 python -m spacy download en_core_web_lg
 ```
 
+## OCR Engines
+
+Presidio Image Redactor supports multiple OCR engines for text detection and recognition. You can choose the engine that best fits your needs:
+
+### Tesseract OCR (Default)
+
+By default, Presidio uses Tesseract OCR. No additional configuration is needed if you've installed Tesseract following the installation instructions above.
+
+```python
+from presidio_image_redactor import ImageRedactorEngine
+
+# Uses Tesseract OCR by default
+engine = ImageRedactorEngine()
+```
+
+### EasyOCR (Recommended for Chinese and Asian languages)
+
+EasyOCR offers good accuracy for Chinese (traditional and simplified), Japanese, Korean, and many other languages. It supports over 80 languages and provides a simple API.
+
+**Installation:**
+
+```sh
+pip install presidio-image-redactor[easyocr]
+```
+
+**Usage:**
+
+```python
+from PIL import Image
+from presidio_image_redactor import ImageRedactorEngine, ImageAnalyzerEngine
+from presidio_image_redactor import EasyOCREngine
+
+# Create EasyOCR engine for Traditional Chinese + English
+easyocr_engine = EasyOCREngine(
+    lang_list=['ch_tra', 'en'],  # Traditional Chinese + English
+    gpu=False,                    # Set True if you have GPU
+)
+
+# Create Image Analyzer with EasyOCR
+image_analyzer = ImageAnalyzerEngine(ocr=easyocr_engine)
+
+# Create Redactor Engine
+engine = ImageRedactorEngine(image_analyzer_engine=image_analyzer)
+
+# Use as normal
+image = Image.open("test.png")
+redacted_image = engine.redact(image)
+```
+
+**Supported languages:** EasyOCR supports 80+ languages including:
+- `en` - English
+- `ch_tra` - Traditional Chinese
+- `ch_sim` - Simplified Chinese
+- `ja` - Japanese
+- `ko` - Korean
+- And many more (see [EasyOCR supported languages](https://www.jaided.ai/easyocr/))
+
+**GPU Support:** EasyOCR uses PyTorch. If you have a CUDA-compatible GPU, install the GPU version of PyTorch and set `gpu=True`.
+
+### Azure Document Intelligence OCR
+
+For cloud-based OCR with high accuracy, you can use Azure's Document Intelligence service:
+
+```python
+from presidio_image_redactor import ImageRedactorEngine, ImageAnalyzerEngine
+from presidio_image_redactor import DocumentIntelligenceOCR
+import os
+
+# Set up Azure credentials
+os.environ["DOCUMENT_INTELLIGENCE_ENDPOINT"] = "your-endpoint"
+os.environ["DOCUMENT_INTELLIGENCE_KEY"] = "your-key"
+
+# Create Azure DI OCR engine
+azure_ocr = DocumentIntelligenceOCR()
+
+# Create Image Analyzer with Azure OCR
+image_analyzer = ImageAnalyzerEngine(ocr=azure_ocr)
+
+# Create Redactor Engine
+engine = ImageRedactorEngine(image_analyzer_engine=image_analyzer)
+```
+
+### Choosing the Right OCR Engine
+
+| Engine | Best For | Pros | Cons |
+|--------|----------|------|------|
+| **Tesseract** | General purpose, English text | Free, well-established, no cloud dependency | Lower accuracy for Asian languages |
+| **EasyOCR** | Chinese, Japanese, Korean, Asian languages | Good accuracy for Asian languages, easy to use, 80+ languages | Requires PyTorch |
+| **Azure DI** | Enterprise applications, high accuracy needs | Very high accuracy, cloud-backed | Requires Azure subscription, API costs |
+
 ## Getting started (standard image types)
 
 The engine will receive 2 parameters:
