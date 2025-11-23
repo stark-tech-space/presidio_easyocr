@@ -34,13 +34,23 @@ RUN pip install "numpy<2"
 # ============================================
 # Layer 3: Python dependencies (change when pyproject.toml changes)
 # ============================================
+# Install main dependencies (without easyocr to avoid torch conflict)
 COPY ./pyproject.toml /app/
 RUN pip install poetry \
-    && poetry install --no-root --only=main -E server -E easyocr \
+    && poetry install --no-root --only=main -E server \
     && rm -rf $(poetry config cache-dir)
+
+# Install easyocr WITHOUT torch (NGC image already has optimized PyTorch)
+# --no-deps prevents easyocr from overwriting NGC's CUDA-enabled PyTorch
+RUN pip install easyocr --no-deps \
+    && pip install ninja pyyaml scipy opencv-python-headless Pillow scikit-image python-bidi
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_lg
+
+# Pre-download EasyOCR models during build (avoid download on every startup)
+# Models are stored in ~/.EasyOCR/
+RUN python -c "import easyocr; easyocr.Reader(['ch_tra', 'en'], gpu=False, verbose=False)"
 
 # ============================================
 # Layer 4: Application code (changes frequently)
