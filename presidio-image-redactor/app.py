@@ -188,6 +188,52 @@ class Server:
             self.logger.error(f"A fatal error occurred during execution: {e}")
             return jsonify(error=str(e)), 500
 
+    def _is_adjacent(
+        self,
+        ocr_result: dict,
+        idx1: int,
+        idx2: int,
+        h_gap_ratio: float = 1.5,
+        v_overlap_ratio: float = 0.5
+    ) -> bool:
+        """Check if two OCR blocks are spatially adjacent.
+
+        :param ocr_result: OCR result dict with left, top, width, height arrays
+        :param idx1: Index of first block (should be to the left)
+        :param idx2: Index of second block (should be to the right)
+        :param h_gap_ratio: Max horizontal gap as ratio of avg char width
+        :param v_overlap_ratio: Min vertical overlap ratio to consider same line
+        :return: True if blocks are adjacent
+        """
+        left1, top1 = ocr_result["left"][idx1], ocr_result["top"][idx1]
+        w1, h1 = ocr_result["width"][idx1], ocr_result["height"][idx1]
+        left2, top2 = ocr_result["left"][idx2], ocr_result["top"][idx2]
+        w2, h2 = ocr_result["width"][idx2], ocr_result["height"][idx2]
+
+        # Check horizontal order: block2 should be to the right of block1
+        right1 = left1 + w1
+        if left2 < right1:
+            return False
+
+        # Check horizontal gap: should not be too far apart
+        text1 = ocr_result["text"][idx1]
+        avg_char_width = w1 / max(len(text1), 1)
+        h_gap = left2 - right1
+        if h_gap > avg_char_width * h_gap_ratio:
+            return False
+
+        # Check vertical alignment: blocks should overlap vertically
+        bottom1, bottom2 = top1 + h1, top2 + h2
+        overlap_top = max(top1, top2)
+        overlap_bottom = min(bottom1, bottom2)
+        overlap_height = max(0, overlap_bottom - overlap_top)
+
+        min_height = min(h1, h2)
+        if overlap_height < min_height * v_overlap_ratio:
+            return False
+
+        return True
+
     def _redact_by_texts(
         self,
         image: Image.Image,
@@ -203,44 +249,54 @@ class Server:
         """
         # Perform OCR
         ocr_result = self.ocr.perform_ocr(image)
+        texts = ocr_result.get("text", [])
 
-        # Find matching bboxes
-        bboxes_to_redact = []
-        for i, text in enumerate(ocr_result.get("text", [])):
-            # Check for exact match or substring match
-            should_redact = False
-            for target in texts_to_redact:
-                # Exact match
-                if target == text:
-                    should_redact = True
-                    break
-                # Target is substring of OCR text
+        # Bug 2 fix: Filter out targets with length < 2
+        valid_targets = [t for t in texts_to_redact if len(t) >= 2]
+
+        indices_to_redact = set()
+
+        for target in valid_targets:
+            # Single block match: target is substring of OCR text
+            # Bug 3 fix: removed redundant exact match check
+            for i, text in enumerate(texts):
                 if target in text:
-                    should_redact = True
-                    break
-                # OCR text is substring of target (only if text is significant)
-                # Require at least 2 chars to avoid single digit matches
-                if len(text) >= 2 and text in target:
-                    should_redact = True
-                    break
+                    indices_to_redact.add(i)
 
-            if should_redact:
-                bboxes_to_redact.append({
-                    "left": ocr_result["left"][i],
-                    "top": ocr_result["top"][i],
-                    "width": ocr_result["width"][i],
-                    "height": ocr_result["height"][i],
-                })
+            # Multi-block combination match (Bug 1 fix):
+            # Try combining adjacent blocks to match target
+            for start_idx in range(len(texts)):
+                combined_text = ""
+                combined_indices = []
+
+                for j in range(start_idx, len(texts)):
+                    # Check if adjacent (first block or adjacent to previous)
+                    if j == start_idx or self._is_adjacent(
+                        ocr_result, combined_indices[-1], j
+                    ):
+                        combined_text += texts[j]
+                        combined_indices.append(j)
+
+                        # Check if combined text matches target
+                        if target in combined_text:
+                            indices_to_redact.update(combined_indices)
+                            break
+
+                        # Stop if combined text exceeds target length without match
+                        if len(combined_text) > len(target):
+                            break
+                    else:
+                        break
 
         # Draw redaction boxes
         redacted = image.copy()
         draw = ImageDraw.Draw(redacted)
 
-        for bbox in bboxes_to_redact:
-            x0 = bbox["left"]
-            y0 = bbox["top"]
-            x1 = x0 + bbox["width"]
-            y1 = y0 + bbox["height"]
+        for i in indices_to_redact:
+            x0 = ocr_result["left"][i]
+            y0 = ocr_result["top"][i]
+            x1 = x0 + ocr_result["width"][i]
+            y1 = y0 + ocr_result["height"][i]
             draw.rectangle([x0, y0, x1, y1], fill=color_fill)
 
         return redacted
