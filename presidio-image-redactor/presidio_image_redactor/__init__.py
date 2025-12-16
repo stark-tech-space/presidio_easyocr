@@ -7,6 +7,7 @@ from .ocr import OCR
 from .tesseract_ocr import TesseractOCR
 from .document_intelligence_ocr import DocumentIntelligenceOCR
 from .easyocr_engine import EasyOCREngine
+from .paddleocr_api_engine import PaddleOCRAPIEngine
 from .bbox import BboxProcessor
 from .image_processing_engine import ImagePreprocessor
 from .image_analyzer_engine import ImageAnalyzerEngine
@@ -29,6 +30,7 @@ __all__ = [
     "TesseractOCR",
     "DocumentIntelligenceOCR",
     "EasyOCREngine",
+    "PaddleOCRAPIEngine",
     "BboxProcessor",
     "ImageAnalyzerEngine",
     "ImageRedactorEngine",

@@ -23,6 +23,13 @@ try:
 except ImportError:
     EASYOCR_AVAILABLE = False
 
+# Try to import PaddleOCR API engine
+try:
+    from presidio_image_redactor import PaddleOCRAPIEngine
+    PADDLEOCR_API_AVAILABLE = True
+except ImportError:
+    PADDLEOCR_API_AVAILABLE = False
+
 DEFAULT_PORT = "3000"
 
 WELCOME_MESSAGE = r"""
@@ -45,9 +52,50 @@ class Server:
         self.app = Flask(__name__)
         self.logger.info("Starting image redactor engine")
 
-        # Initialize OCR engine
+        # Initialize OCR engine based on OCR_ENGINE environment variable
+        # Options: "easyocr" (default), "paddleocr_api"
         self.ocr = None
-        if EASYOCR_AVAILABLE:
+        ocr_engine = os.environ.get("OCR_ENGINE", "easyocr").lower()
+        print(f"[OCR] Selected engine: {ocr_engine}")
+
+        if ocr_engine == "paddleocr_api" and PADDLEOCR_API_AVAILABLE:
+            # PaddleOCR API configuration
+            api_url = os.environ.get("PADDLEOCR_API_URL")
+            token = os.environ.get("PADDLEOCR_TOKEN")
+
+            if not api_url or not token:
+                print("[PaddleOCR API] ERROR: PADDLEOCR_API_URL and PADDLEOCR_TOKEN required")
+                print("[PaddleOCR API] Falling back to EasyOCR")
+                ocr_engine = "easyocr"
+            else:
+                use_orientation = os.environ.get(
+                    "PADDLEOCR_USE_ORIENTATION", "false"
+                ).lower() == "true"
+                use_unwarping = os.environ.get(
+                    "PADDLEOCR_USE_UNWARPING", "false"
+                ).lower() == "true"
+                use_textline = os.environ.get(
+                    "PADDLEOCR_USE_TEXTLINE", "false"
+                ).lower() == "true"
+                timeout = int(os.environ.get("PADDLEOCR_TIMEOUT", "60"))
+
+                print(f"[PaddleOCR API] URL: {api_url}")
+                print(f"[PaddleOCR API] Orientation classify: {use_orientation}")
+                print(f"[PaddleOCR API] Unwarping: {use_unwarping}")
+                print(f"[PaddleOCR API] Textline orientation: {use_textline}")
+                print(f"[PaddleOCR API] Timeout: {timeout}s")
+
+                self.ocr = PaddleOCRAPIEngine(
+                    api_url=api_url,
+                    token=token,
+                    use_doc_orientation_classify=use_orientation,
+                    use_doc_unwarping=use_unwarping,
+                    use_textline_orientation=use_textline,
+                    timeout=timeout,
+                )
+                print("[PaddleOCR API] Initialization complete")
+
+        if self.ocr is None and ocr_engine == "easyocr" and EASYOCR_AVAILABLE:
             ocr_languages = os.environ.get("OCR_LANGUAGES", "ch_tra,en").split(",")
             ocr_gpu = os.environ.get("OCR_GPU", "false").lower() == "true"
 
@@ -64,7 +112,8 @@ class Server:
                 else:
                     print("[GPU] CUDA not available, EasyOCR will use CPU")
                     if ocr_gpu:
-                        print("[GPU] WARNING: OCR_GPU=true but CUDA not available, falling back to CPU")
+                        msg = "[GPU] WARNING: OCR_GPU=true but CUDA not available"
+                        print(f"{msg}, falling back to CPU")
                         ocr_gpu = False
             except Exception as e:
                 print(f"[GPU] Failed to check CUDA availability: {e}")
@@ -73,6 +122,9 @@ class Server:
             print(f"[EasyOCR] Initializing with languages: {ocr_languages}, GPU: {ocr_gpu}")
             self.ocr = EasyOCREngine(lang_list=ocr_languages, gpu=ocr_gpu, verbose=False)
             print("[EasyOCR] Initialization complete")
+
+        if self.ocr is None:
+            print("[OCR] WARNING: No OCR engine available")
 
         # Initialize engines
         if self.ocr:
@@ -111,8 +163,8 @@ class Server:
                 if texts_to_redact:
                     if not self.ocr:
                         raise InvalidParamError(
-                            "texts_to_redact requires EasyOCR. "
-                            "Install with: pip install easyocr"
+                            "texts_to_redact requires OCR engine. "
+                            "Set OCR_ENGINE=easyocr or OCR_ENGINE=paddleocr_api"
                         )
                     redacted_image = self._redact_by_texts(
                         im, texts_to_redact, color_fill
