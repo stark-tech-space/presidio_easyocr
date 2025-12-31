@@ -1,0 +1,12 @@
+# PaddleOCR Local Service Dependencies
+#
+# 前置条件：先安装 paddlepaddle-gpu
+# python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
+
+paddleocr>=3.0.0
+flask>=3.0.0
+gunicorn>=22.0.0
+gevent>=24.0.0
+pillow>=10.0.0
+numpy<2
+opencv-python>=4.0.0

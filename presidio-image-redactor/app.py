@@ -59,41 +59,72 @@ class Server:
         print(f"[OCR] Selected engine: {ocr_engine}")
 
         if ocr_engine == "paddleocr_api" and PADDLEOCR_API_AVAILABLE:
-            # PaddleOCR API configuration
-            api_url = os.environ.get("PADDLEOCR_API_URL")
-            token = os.environ.get("PADDLEOCR_TOKEN")
+            # PaddleOCR configuration - supports local and remote modes
+            paddleocr_mode = os.environ.get("PADDLEOCR_MODE", "remote").lower()
 
-            if not api_url or not token:
-                print("[PaddleOCR API] ERROR: PADDLEOCR_API_URL and PADDLEOCR_TOKEN required")
-                print("[PaddleOCR API] Falling back to EasyOCR")
-                ocr_engine = "easyocr"
+            use_orientation = os.environ.get(
+                "PADDLEOCR_USE_ORIENTATION", "false"
+            ).lower() == "true"
+            use_unwarping = os.environ.get(
+                "PADDLEOCR_USE_UNWARPING", "false"
+            ).lower() == "true"
+            use_textline = os.environ.get(
+                "PADDLEOCR_USE_TEXTLINE", "false"
+            ).lower() == "true"
+            timeout = int(os.environ.get("PADDLEOCR_TIMEOUT", "60"))
+
+            if paddleocr_mode == "local":
+                # Local mode: use locally deployed PaddleOCR service
+                local_url = os.environ.get("PADDLEOCR_LOCAL_URL")
+                if not local_url:
+                    print("[PaddleOCR] ERROR: PADDLEOCR_LOCAL_URL required for local mode")
+                    print("[PaddleOCR] Falling back to EasyOCR")
+                    ocr_engine = "easyocr"
+                else:
+                    print(f"[PaddleOCR] Mode: local")
+                    print(f"[PaddleOCR] URL: {local_url}")
+                    print(f"[PaddleOCR] Orientation classify: {use_orientation}")
+                    print(f"[PaddleOCR] Unwarping: {use_unwarping}")
+                    print(f"[PaddleOCR] Textline orientation: {use_textline}")
+                    print(f"[PaddleOCR] Timeout: {timeout}s")
+
+                    self.ocr = PaddleOCRAPIEngine(
+                        api_url=local_url,
+                        token=None,
+                        mode="local",
+                        use_doc_orientation_classify=use_orientation,
+                        use_doc_unwarping=use_unwarping,
+                        use_textline_orientation=use_textline,
+                        timeout=timeout,
+                    )
+                    print("[PaddleOCR] Local mode initialization complete")
             else:
-                use_orientation = os.environ.get(
-                    "PADDLEOCR_USE_ORIENTATION", "false"
-                ).lower() == "true"
-                use_unwarping = os.environ.get(
-                    "PADDLEOCR_USE_UNWARPING", "false"
-                ).lower() == "true"
-                use_textline = os.environ.get(
-                    "PADDLEOCR_USE_TEXTLINE", "false"
-                ).lower() == "true"
-                timeout = int(os.environ.get("PADDLEOCR_TIMEOUT", "60"))
+                # Remote mode: use online PaddleOCR service
+                api_url = os.environ.get("PADDLEOCR_API_URL")
+                token = os.environ.get("PADDLEOCR_TOKEN")
 
-                print(f"[PaddleOCR API] URL: {api_url}")
-                print(f"[PaddleOCR API] Orientation classify: {use_orientation}")
-                print(f"[PaddleOCR API] Unwarping: {use_unwarping}")
-                print(f"[PaddleOCR API] Textline orientation: {use_textline}")
-                print(f"[PaddleOCR API] Timeout: {timeout}s")
+                if not api_url or not token:
+                    print("[PaddleOCR] ERROR: PADDLEOCR_API_URL and PADDLEOCR_TOKEN required")
+                    print("[PaddleOCR] Falling back to EasyOCR")
+                    ocr_engine = "easyocr"
+                else:
+                    print(f"[PaddleOCR] Mode: remote")
+                    print(f"[PaddleOCR] URL: {api_url}")
+                    print(f"[PaddleOCR] Orientation classify: {use_orientation}")
+                    print(f"[PaddleOCR] Unwarping: {use_unwarping}")
+                    print(f"[PaddleOCR] Textline orientation: {use_textline}")
+                    print(f"[PaddleOCR] Timeout: {timeout}s")
 
-                self.ocr = PaddleOCRAPIEngine(
-                    api_url=api_url,
-                    token=token,
-                    use_doc_orientation_classify=use_orientation,
-                    use_doc_unwarping=use_unwarping,
-                    use_textline_orientation=use_textline,
-                    timeout=timeout,
-                )
-                print("[PaddleOCR API] Initialization complete")
+                    self.ocr = PaddleOCRAPIEngine(
+                        api_url=api_url,
+                        token=token,
+                        mode="remote",
+                        use_doc_orientation_classify=use_orientation,
+                        use_doc_unwarping=use_unwarping,
+                        use_textline_orientation=use_textline,
+                        timeout=timeout,
+                    )
+                    print("[PaddleOCR] Remote mode initialization complete")
 
         if self.ocr is None and ocr_engine == "easyocr" and EASYOCR_AVAILABLE:
             ocr_languages = os.environ.get("OCR_LANGUAGES", "ch_tra,en").split(",")

@@ -1,5 +1,6 @@
-supported_languages: 
+supported_languages:
   - en
+  - zh
 global_regex_flags: 26
 
 recognizers:

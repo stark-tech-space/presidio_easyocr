@@ -1,7 +1,8 @@
 """PaddleOCR API engine for Presidio Image Redactor.
 
-This module provides a PaddleOCR API-based OCR engine that uses the online
-PaddleOCR service (PP-OCRv5) for text detection and recognition.
+This module provides a PaddleOCR API-based OCR engine that supports both:
+- Remote mode: Uses the online PaddleOCR service (PP-OCRv5)
+- Local mode: Uses locally deployed PaddleOCR Docker service
 """
 
 import base64
@@ -20,13 +21,18 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 
 class PaddleOCRAPIEngine(OCR):
-    """OCR engine that uses PaddleOCR online API for text detection and recognition.
+    """OCR engine that uses PaddleOCR API for text detection and recognition.
+
+    Supports two modes:
+    - remote: Uses online PaddleOCR service with token authentication
+    - local: Uses locally deployed PaddleOCR Docker service (no auth required)
 
     PaddleOCR PP-OCRv5 provides high-accuracy OCR for Chinese (simplified and
     traditional), English, Japanese, and many other languages.
 
     :param api_url: The PaddleOCR API endpoint URL.
-    :param token: The authentication token for the API.
+    :param token: The authentication token (required for remote mode, optional for local).
+    :param mode: Operation mode - "remote" or "local". Default is "remote".
     :param use_doc_orientation_classify: Whether to use document orientation
                                          classification. Default is False.
     :param use_doc_unwarping: Whether to use document unwarping for curved/wrinkled
@@ -36,14 +42,22 @@ class PaddleOCRAPIEngine(OCR):
     :param timeout: Request timeout in seconds. Default is 60.
     :param api_kwargs: Additional keyword arguments passed to the API request.
 
-    Example usage:
+    Example usage (remote mode):
         >>> from PIL import Image
         >>> from presidio_image_redactor.paddleocr_api_engine import PaddleOCRAPIEngine
         >>>
-        >>> # Create PaddleOCR API engine
+        >>> # Create PaddleOCR API engine (remote)
         >>> ocr = PaddleOCRAPIEngine(
         ...     api_url="https://your-api-endpoint.com/ocr",
-        ...     token="your-token"
+        ...     token="your-token",
+        ...     mode="remote"
+        ... )
+
+    Example usage (local mode):
+        >>> # Create PaddleOCR API engine (local)
+        >>> ocr = PaddleOCRAPIEngine(
+        ...     api_url="http://paddleocr-local:8080/ocr",
+        ...     mode="local"
         ... )
         >>>
         >>> # Perform OCR
@@ -55,7 +69,8 @@ class PaddleOCRAPIEngine(OCR):
     def __init__(
         self,
         api_url: str,
-        token: str,
+        token: Optional[str] = None,
+        mode: str = "remote",
         use_doc_orientation_classify: bool = False,
         use_doc_unwarping: bool = False,
         use_textline_orientation: bool = False,
@@ -70,6 +85,16 @@ class PaddleOCRAPIEngine(OCR):
 
         self.api_url = api_url
         self.token = token
+        self.mode = mode.lower()
+
+        # Validate mode
+        if self.mode not in ("remote", "local"):
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'remote' or 'local'.")
+
+        # Remote mode requires token
+        if self.mode == "remote" and not token:
+            raise ValueError("Token is required for remote mode")
+
         self.use_doc_orientation_classify = use_doc_orientation_classify
         self.use_doc_unwarping = use_doc_unwarping
         self.use_textline_orientation = use_textline_orientation
@@ -95,11 +120,10 @@ class PaddleOCRAPIEngine(OCR):
         # Convert image to base64
         image_base64 = self._prepare_image(image)
 
-        # Build API request
-        headers = {
-            "Authorization": f"token {self.token}",
-            "Content-Type": "application/json"
-        }
+        # Build headers based on mode
+        headers = {"Content-Type": "application/json"}
+        if self.mode == "remote" and self.token:
+            headers["Authorization"] = f"token {self.token}"
 
         payload = {
             "file": image_base64,
