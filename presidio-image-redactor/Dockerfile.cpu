@@ -1,0 +1,55 @@
+# CPU version for Mac Studio / non-NVIDIA environments
+FROM python:3.12-slim
+
+ARG NLP_CONF_FILE
+ARG ANALYZER_CONF_FILE
+ARG RECOGNIZER_REGISTRY_CONF_FILE
+
+ENV PIP_NO_CACHE_DIR=1
+ENV POETRY_VIRTUALENVS_CREATE=false
+ENV PORT=3000
+ENV WORKERS=1
+ENV TIMEOUT=300
+ENV OCR_LANGUAGES=ch_tra,en
+ENV OCR_GPU=false
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     ffmpeg libsm6 libxext6 curl build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY ./pyproject.toml /app/
+RUN pip install poetry \
+    && poetry install --no-root --only=main -E server \
+    && rm -rf $(poetry config cache-dir)
+
+# Install EasyOCR (CPU version - will install torch CPU automatically)
+# requests is needed for PaddleOCR API engine
+RUN pip install easyocr requests
+
+# Download spaCy model
+RUN python -m spacy download en_core_web_lg
+
+# Pre-download EasyOCR models
+RUN python -c "import easyocr; easyocr.Reader(['ch_tra', 'en'], gpu=False, verbose=False)"
+
+# Config files
+ENV ANALYZER_CONF_FILE=${ANALYZER_CONF_FILE}
+ENV RECOGNIZER_REGISTRY_CONF_FILE=${RECOGNIZER_REGISTRY_CONF_FILE}
+ENV NLP_CONF_FILE=${NLP_CONF_FILE}
+
+COPY ${ANALYZER_CONF_FILE} /app/${ANALYZER_CONF_FILE}
+COPY ${RECOGNIZER_REGISTRY_CONF_FILE} /app/${RECOGNIZER_REGISTRY_CONF_FILE}
+COPY ${NLP_CONF_FILE} /app/${NLP_CONF_FILE}
+
+# Application code
+COPY . /app/
+
+EXPOSE ${PORT}
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+CMD ["./entrypoint.sh"]

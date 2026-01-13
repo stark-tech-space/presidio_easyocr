@@ -1,0 +1,20 @@
+services:
+  presidio-image-redactor:
+    image: presidio-image-redactor:cpu
+    build:
+      context: ./presidio-image-redactor
+      dockerfile: Dockerfile.cpu
+    environment:
+      - PORT=3000
+      - WORKERS=1
+      - TIMEOUT=300
+      # Option 1: Use PaddleOCR API (recommended - faster)
+      # - OCR_ENGINE=paddleocr_api
+      # - PADDLEOCR_API_URL=https://your-api-endpoint
+      # - PADDLEOCR_TOKEN=your-token
+      # Option 2: Use local EasyOCR (CPU, slower)
+      - OCR_ENGINE=easyocr
+      - OCR_LANGUAGES=ch_tra,en
+      - OCR_GPU=false
+    ports:
+      - "5003:3000"
