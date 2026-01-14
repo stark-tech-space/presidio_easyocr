@@ -15,6 +15,10 @@ from presidio_image_redactor.entities.api_request_convertor import (
     get_json_data,
     image_to_byte_array,
 )
+from rapidfuzz import fuzz
+
+# Fuzzy matching threshold (0-100), 80 means 80% similarity required
+FUZZY_MATCH_THRESHOLD = 80
 
 # Try to import EasyOCR engine
 try:
@@ -302,6 +306,10 @@ class Server:
         # Perform OCR
         ocr_result = self.ocr.perform_ocr(image)
         texts = ocr_result.get("text", [])
+        
+        # Debug logging
+        print(f"[Redact Debug] texts_to_redact: {texts_to_redact}")
+        print(f"[Redact Debug] OCR found {len(texts)} text blocks: {texts[:10]}..." if len(texts) > 10 else f"[Redact Debug] OCR found {len(texts)} text blocks: {texts}")
 
         # Bug 2 fix: Filter out targets with length < 2
         valid_targets = [t for t in texts_to_redact if len(t) >= 2]
@@ -309,11 +317,46 @@ class Server:
         indices_to_redact = set()
 
         for target in valid_targets:
-            # Single block match: target is substring of OCR text
-            # Bug 3 fix: removed redundant exact match check
+            matched = False
+            best_score = 0
+            best_text = ""
+            
+            # Single block match: target is substring of OCR text OR fuzzy match
             for i, text in enumerate(texts):
+                # Exact substring match
                 if target in text:
+                    print(f"[Match] target='{target}' ocr_text='{text}' type=substring")
                     indices_to_redact.add(i)
+                    matched = True
+                else:
+                    # Fuzzy match
+                    fuzzy_score = fuzz.ratio(target.lower(), text.lower())
+                    
+                    # Only use partial_ratio if OCR text is long enough
+                    # to avoid false positives like "5" matching "051年10月26日"
+                    min_len = min(len(target), len(text))
+                    max_len = max(len(target), len(text))
+                    
+                    # Use partial_ratio only if lengths are comparable (ratio > 0.3)
+                    if min_len >= 2 and min_len / max_len >= 0.3:
+                        partial_score = fuzz.partial_ratio(target.lower(), text.lower())
+                        max_score = max(fuzzy_score, partial_score)
+                    else:
+                        max_score = fuzzy_score
+                    
+                    # Track best match for debugging
+                    if max_score > best_score:
+                        best_score = max_score
+                        best_text = text
+                    
+                    if max_score >= FUZZY_MATCH_THRESHOLD:
+                        print(f"[Match] target='{target}' ocr_text='{text}' type=fuzzy score={max_score}")
+                        indices_to_redact.add(i)
+                        matched = True
+            
+            # Log if no match found
+            if not matched:
+                print(f"[No Match] target='{target}' best_ocr='{best_text}' best_score={best_score} (threshold={FUZZY_MATCH_THRESHOLD})")
 
             # Multi-block combination match (Bug 1 fix):
             # Try combining adjacent blocks to match target
