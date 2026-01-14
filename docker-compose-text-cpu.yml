@@ -1,0 +1,24 @@
+services:
+  presidio-anonymizer:
+    image: presidio-anonymizer:cpu
+    build:
+      context: ./presidio-anonymizer
+    environment:
+      - PORT=5001
+    ports:
+      - "5001:5001"
+
+  presidio-analyzer:
+    image: presidio-analyzer:cpu
+    build:
+      context: ./presidio-analyzer
+      args:
+        # Chinese + English spaCy models (zh_core_web_trf + en_core_web_lg)
+        NLP_CONF_FILE: presidio_analyzer/conf/spacy_zh.yaml
+    environment:
+      - PORT=5001
+      - WORKERS=1
+      - TIMEOUT=300
+      - NLP_CONF_FILE=presidio_analyzer/conf/spacy_zh.yaml
+    ports:
+      - "5002:5001"
