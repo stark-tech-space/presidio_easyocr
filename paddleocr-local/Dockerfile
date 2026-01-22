@@ -1,5 +1,5 @@
 # PaddleOCR Local Service
-# Based on official PaddlePaddle GPU image with CUDA 12.6
+# Based on official PaddlePaddle 3.3.0 GPU image with CUDA 13.0
 
 FROM paddlepaddle/paddle:3.3.0-gpu-cuda13.0-cudnn9.13
 

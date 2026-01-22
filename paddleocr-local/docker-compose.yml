@@ -4,14 +4,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    runtime: nvidia
+    # GPU support for Docker Compose v2.x+
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+              count: all
+              capabilities: [gpu, compute, utility]
     ipc: host
     shm_size: '8gb'
     ulimits:
@@ -26,12 +26,17 @@ services:
       - USE_DOC_ORIENTATION=false
       - USE_DOC_UNWARPING=false
       - USE_TEXTLINE_ORIENTATION=false
+      # NVIDIA Container Toolkit environment
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
     ports:
       - "8080:8080"
     volumes:
       # Persist model files to avoid re-downloading on restart
+      # PaddleOCR 3.x uses ~/.paddlex for official models
       - paddleocr-models:/root/.paddleocr
+      - paddlex-models:/root/.paddlex
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -41,3 +46,4 @@ services:
 
 volumes:
   paddleocr-models:
+  paddlex-models:

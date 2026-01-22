@@ -38,10 +38,24 @@ def get_ocr():
     """Lazy initialization of PaddleOCR instance."""
     global _ocr_instance
     if _ocr_instance is None:
+        import paddle
         from paddleocr import PaddleOCR
 
         logger.info("[PaddleOCR] Initializing...")
-        device = "gpu" if USE_GPU else "cpu"
+
+        # Explicitly set PaddlePaddle device before initializing PaddleOCR
+        if USE_GPU:
+            try:
+                paddle.device.set_device('gpu:0')
+                device = "gpu"
+                logger.info(f"[PaddlePaddle] GPU device set: {paddle.device.get_device()}")
+            except Exception as e:
+                logger.warning(f"[PaddlePaddle] Failed to set GPU, falling back to CPU: {e}")
+                paddle.device.set_device('cpu')
+                device = "cpu"
+        else:
+            paddle.device.set_device('cpu')
+            device = "cpu"
 
         _ocr_instance = PaddleOCR(
             use_doc_orientation_classify=USE_DOC_ORIENTATION,
