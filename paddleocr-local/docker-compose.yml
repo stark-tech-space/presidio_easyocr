@@ -1,0 +1,43 @@
+services:
+  paddleocr-local:
+    image: paddleocr-local:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ipc: host
+    shm_size: '8gb'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    environment:
+      - PORT=8080
+      - WORKERS=4
+      - TIMEOUT=300
+      - USE_GPU=true
+      - USE_DOC_ORIENTATION=false
+      - USE_DOC_UNWARPING=false
+      - USE_TEXTLINE_ORIENTATION=false
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist model files to avoid re-downloading on restart
+      - paddleocr-models:/root/.paddleocr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  paddleocr-models:
