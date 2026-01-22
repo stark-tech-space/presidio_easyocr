@@ -1,72 +1,43 @@
-# DGX Spark (ARM64 Grace Blackwell GB10) requires NGC container with CUDA 13.0 support
-# 25.09-py3 is optimized for DGX Spark with PyTorch 2.9.0a and CUDA 13.0.1
-FROM nvcr.io/nvidia/pytorch:25.09-py3
+FROM python:3.13-slim
 
-# Build arguments for config files
 ARG NLP_CONF_FILE
 ARG ANALYZER_CONF_FILE
 ARG RECOGNIZER_REGISTRY_CONF_FILE
-
-# Environment variables (rarely change - good for caching)
 ENV PIP_NO_CACHE_DIR=1
 ENV POETRY_VIRTUALENVS_CREATE=false
-ENV PORT=3000
-ENV WORKERS=1
-ENV TIMEOUT=300
-ENV OCR_LANGUAGES=ch_tra,en
-ENV OCR_GPU=true
 
-WORKDIR /app
-
-# ============================================
-# Layer 1: System dependencies (rarely change)
-# ============================================
-RUN apt-get update \
-  && apt-get install ffmpeg libsm6 libxext6 curl --no-install-recommends -y \
-  && rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# Layer 2: Fix numpy compatibility (rarely change)
-# ============================================
-# NGC image ships with numpy 2.x which breaks opencv-python, pyarrow, etc.
-RUN pip install "numpy<2"
-
-# ============================================
-# Layer 3: Python dependencies (change when pyproject.toml changes)
-# ============================================
-# Install main dependencies (without easyocr to avoid torch conflict)
-COPY ./pyproject.toml /app/
-RUN pip install poetry \
-    && poetry install --no-root --only=main -E server \
-    && rm -rf $(poetry config cache-dir)
-
-# Install easyocr WITHOUT torch (NGC image already has optimized PyTorch)
-# --no-deps prevents easyocr from overwriting NGC's CUDA-enabled PyTorch
-RUN pip install easyocr --no-deps \
-    && pip install ninja pyyaml scipy opencv-python-headless Pillow scikit-image python-bidi
-
-# Download spaCy model
-RUN python -m spacy download en_core_web_lg
-
-# Pre-download EasyOCR models during build (avoid download on every startup)
-# Models are stored in ~/.EasyOCR/
-RUN python -c "import easyocr; easyocr.Reader(['ch_tra', 'en'], gpu=False, verbose=False)"
-
-# ============================================
-# Layer 4: Application code (changes frequently)
-# ============================================
-# Set config file env vars (need ARG values)
 ENV ANALYZER_CONF_FILE=${ANALYZER_CONF_FILE}
 ENV RECOGNIZER_REGISTRY_CONF_FILE=${RECOGNIZER_REGISTRY_CONF_FILE}
 ENV NLP_CONF_FILE=${NLP_CONF_FILE}
 
-# Copy config files
+ENV PORT=3000
+ENV WORKERS=1
+
 COPY ${ANALYZER_CONF_FILE} /app/${ANALYZER_CONF_FILE}
 COPY ${RECOGNIZER_REGISTRY_CONF_FILE} /app/${RECOGNIZER_REGISTRY_CONF_FILE}
 COPY ${NLP_CONF_FILE} /app/${NLP_CONF_FILE}
 
-# Copy application source code
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install build-essential tesseract-ocr ffmpeg libsm6 libxext6 curl --no-install-recommends -y \
+  && rm -rf /var/lib/apt/lists/* \
+  && tesseract -v
+
+COPY ./pyproject.toml /app/
+RUN pip install poetry \
+    && poetry install --no-root --only=main -E server\
+    && rm -rf $(poetry config cache-dir)
+
+# Install spaCy model during build (as root) so it's available to non-root user at runtime
+RUN python -m spacy download en_core_web_lg
+
 COPY . /app/
+
+# Create a non-root user and set ownership
+RUN useradd -m -u 1001 presidio && chown -R presidio:presidio /app
+
+USER 1001
 
 EXPOSE ${PORT}
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
