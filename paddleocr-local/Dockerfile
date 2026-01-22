@@ -22,11 +22,14 @@ RUN apt-get update \
 # Python dependencies
 # Note: Base image already has paddlepaddle-gpu installed
 # Install paddleocr without dependencies to avoid overwriting GPU version
+# Force uninstall numpy 2.x first (PaddleX has compatibility issues with numpy 2.x)
 # Use --ignore-installed to bypass distutils-installed system packages (e.g., blinker)
 COPY requirements.txt /app/
 RUN pip install --upgrade pip \
+    && pip uninstall -y numpy || true \
     && pip install paddleocr --no-deps \
-    && pip install --ignore-installed -r requirements.txt
+    && pip install --ignore-installed -r requirements.txt \
+    && pip install 'numpy<2' --force-reinstall
 
 # Application code
 COPY app.py /app/

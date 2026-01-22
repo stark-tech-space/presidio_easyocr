@@ -2,18 +2,20 @@
 
 Provides HTTP API compatible with remote PaddleOCR API format,
 enabling seamless switching between local and remote deployments.
+
+PaddleOCR 3.x compatible.
 """
 
 import base64
-import io
 import logging
 import os
+import tempfile
 import time
 from typing import Any, Dict, List
 
+import cv2
 import numpy as np
 from flask import Flask, jsonify, request
-from PIL import Image
 
 # Lazy-loaded PaddleOCR instance
 _ocr_instance = None
@@ -52,20 +54,42 @@ def get_ocr():
     return _ocr_instance
 
 
-def decode_image(image_data: str) -> np.ndarray:
-    """Decode base64 image to numpy array."""
+def decode_image_to_file(image_data: str) -> str:
+    """Decode base64 image and save to temp file.
+
+    PaddleOCR 3.x works best with file paths rather than numpy arrays.
+    This avoids potential format conversion issues.
+    """
     image_bytes = base64.b64decode(image_data)
-    image = Image.open(io.BytesIO(image_bytes))
 
-    # Convert to RGB if needed
-    if image.mode in ('RGBA', 'LA', 'P'):
-        image = image.convert('RGB')
+    # Create temp file with proper extension
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+        f.write(image_bytes)
+        return f.name
 
-    return np.array(image)
+
+def decode_image_cv2(image_data: str) -> np.ndarray:
+    """Decode base64 image to numpy array using cv2 (BGR format).
+
+    PaddleOCR expects cv2.imread format (BGR, uint8, C-contiguous).
+    """
+    image_bytes = base64.b64decode(image_data)
+
+    # Use cv2.imdecode to get proper BGR format
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        raise ValueError("Failed to decode image")
+
+    return img
 
 
 def process_ocr_result(result) -> Dict[str, Any]:
-    """Convert PaddleOCR local result to remote API compatible format.
+    """Convert PaddleOCR 3.x result to remote API compatible format.
+
+    PaddleOCR 3.x returns a list of result objects.
+    Each result object has a 'res' attribute containing the actual data.
 
     Remote API format:
     {
@@ -91,14 +115,16 @@ def process_ocr_result(result) -> Dict[str, Any]:
     rec_scores: List = []
 
     # Process PaddleOCR 3.x result format
-    # result is a list of dicts (or OCRResult objects that behave like dicts)
-    for res in result:
-        # Handle both dict and object with dict-like access
-        if isinstance(res, dict):
-            data = res
-        elif hasattr(res, '__getitem__'):
-            data = res
+    for res_obj in result:
+        # Access the 'res' attribute which contains the actual OCR data
+        if hasattr(res_obj, 'res'):
+            data = res_obj.res
+        elif hasattr(res_obj, '__getitem__'):
+            data = res_obj.get('res', res_obj)
+        elif isinstance(res_obj, dict):
+            data = res_obj.get('res', res_obj)
         else:
+            logger.warning(f"Unknown result type: {type(res_obj)}")
             continue
 
         # Get detection polygons
@@ -107,7 +133,6 @@ def process_ocr_result(result) -> Dict[str, Any]:
             if isinstance(polys, np.ndarray):
                 dt_polys = polys.tolist()
             elif isinstance(polys, list):
-                # Convert each polygon array to list
                 dt_polys = [p.tolist() if isinstance(p, np.ndarray) else p for p in polys]
             else:
                 dt_polys = list(polys) if polys else []
@@ -195,6 +220,7 @@ def ocr_endpoint():
 
     Response format matches remote API.
     """
+    temp_file = None
     try:
         data = request.get_json()
         if not data:
@@ -211,10 +237,66 @@ def ocr_endpoint():
                 "errorMsg": "Missing 'file' field (base64 image)"
             }), 400
 
-        # Decode image
+        # Decode image - use file-based approach for reliability
         start_time = time.time()
-        image_array = decode_image(image_b64)
+        temp_file = decode_image_to_file(image_b64)
         decode_time = time.time() - start_time
+
+        # Perform OCR using file path (most reliable method)
+        ocr = get_ocr()
+        start_time = time.time()
+        result = ocr.predict(temp_file)
+        ocr_time = time.time() - start_time
+
+        logger.info(f"[OCR] decode={decode_time:.3f}s, ocr={ocr_time:.3f}s")
+
+        # Convert result format
+        response = process_ocr_result(result)
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"[OCR Error] {str(e)}", exc_info=True)
+        return jsonify({
+            "errorCode": 500,
+            "errorMsg": str(e)
+        }), 500
+    finally:
+        # Clean up temp file
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.unlink(temp_file)
+            except Exception:
+                pass
+
+
+@app.route("/ocr/numpy", methods=["POST"])
+def ocr_numpy_endpoint():
+    """Alternative OCR endpoint using numpy array input.
+
+    This endpoint uses cv2.imdecode for proper BGR format handling.
+    Use this if the file-based endpoint has issues.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "errorCode": 1,
+                "errorMsg": "No JSON data provided"
+            }), 400
+
+        image_b64 = data.get("file")
+        if not image_b64:
+            return jsonify({
+                "errorCode": 2,
+                "errorMsg": "Missing 'file' field (base64 image)"
+            }), 400
+
+        # Decode image using cv2 (BGR format)
+        start_time = time.time()
+        image_array = decode_image_cv2(image_b64)
+        decode_time = time.time() - start_time
+
+        logger.info(f"[OCR] Image shape: {image_array.shape}, dtype: {image_array.dtype}")
 
         # Perform OCR
         ocr = get_ocr()
@@ -224,20 +306,7 @@ def ocr_endpoint():
 
         logger.info(f"[OCR] decode={decode_time:.3f}s, ocr={ocr_time:.3f}s")
 
-        # Debug: print raw result
-        print(f"[OCR DEBUG] Raw result type: {type(result)}", flush=True)
-        print(f"[OCR DEBUG] Raw result: {result}", flush=True)
-        if result:
-            for i, res in enumerate(result):
-                print(f"[OCR DEBUG] Result[{i}] type: {type(res)}", flush=True)
-                if hasattr(res, 'res'):
-                    print(f"[OCR DEBUG] Result[{i}].res: {res.res}", flush=True)
-                if hasattr(res, '__dict__'):
-                    print(f"[OCR DEBUG] Result[{i}].__dict__: {res.__dict__}", flush=True)
-
-        # Convert result format
         response = process_ocr_result(result)
-        logger.info(f"[OCR] Response: {response}")
         return jsonify(response)
 
     except Exception as e:

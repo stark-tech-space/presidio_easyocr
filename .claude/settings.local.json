@@ -26,7 +26,9 @@
       "WebFetch(domain:deepwiki.com)",
       "Bash(cat:*)",
       "Bash(pip show:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ],
     "deny": [],
     "ask": []
