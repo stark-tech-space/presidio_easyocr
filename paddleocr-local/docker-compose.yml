@@ -4,7 +4,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # GPU support for Docker Compose v2.x+
+    # Use runtime for older Docker Compose compatibility
+    runtime: nvidia
+    # Also include deploy for newer Docker Compose
     deploy:
       resources:
         reservations:
@@ -33,8 +35,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Persist model files to avoid re-downloading on restart
-      # PaddleOCR 3.x uses ~/.paddlex for official models
       - paddleocr-models:/root/.paddleocr
       - paddlex-models:/root/.paddlex
     healthcheck:
