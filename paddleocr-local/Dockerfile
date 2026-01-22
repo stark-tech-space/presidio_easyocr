@@ -3,13 +3,11 @@
 
 FROM paddlepaddle/paddle:3.2.0-gpu-cuda12.6-cudnn9.5
 
-# Environment variables
+# Build-time environment variables
 ENV PIP_NO_CACHE_DIR=1
 ENV PYTHONUNBUFFERED=1
+# PORT is needed for EXPOSE and HEALTHCHECK
 ENV PORT=8080
-ENV WORKERS=1
-ENV TIMEOUT=300
-ENV USE_GPU=true
 
 WORKDIR /app
 
