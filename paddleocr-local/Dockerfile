@@ -1,7 +1,7 @@
 # PaddleOCR Local Service
 # Based on official PaddlePaddle GPU image with CUDA 12.6
 
-FROM paddlepaddle/paddle:3.2.0-gpu-cuda12.6-cudnn9.5
+FROM paddlepaddle/paddle:3.3.0-gpu-cuda13.0-cudnn9.13
 
 # Build-time environment variables
 ENV PIP_NO_CACHE_DIR=1
