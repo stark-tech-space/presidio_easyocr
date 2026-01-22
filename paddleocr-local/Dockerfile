@@ -22,10 +22,11 @@ RUN apt-get update \
 # Python dependencies
 # Note: Base image already has paddlepaddle-gpu installed
 # Install paddleocr without dependencies to avoid overwriting GPU version
+# Use --ignore-installed to bypass distutils-installed system packages (e.g., blinker)
 COPY requirements.txt /app/
 RUN pip install --upgrade pip \
     && pip install paddleocr --no-deps \
-    && pip install -r requirements.txt
+    && pip install --ignore-installed -r requirements.txt
 
 # Application code
 COPY app.py /app/
