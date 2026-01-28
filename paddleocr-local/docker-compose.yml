@@ -22,7 +22,7 @@ services:
         hard: -1
     environment:
       - PORT=8080
-      - WORKERS=4
+      - WORKERS=1
       - TIMEOUT=300
       - USE_GPU=true
       - USE_DOC_ORIENTATION=false
