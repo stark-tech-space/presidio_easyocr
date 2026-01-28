@@ -1,6 +1,7 @@
 services:
   presidio-image-redactor:
     image: presidio-image-redactor:latest
+    restart: unless-stopped
     build:
       context: ./presidio-image-redactor
     runtime: nvidia

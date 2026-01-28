@@ -1,6 +1,7 @@
 services:
   paddleocr-local:
     image: paddleocr-local:latest
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
