@@ -341,6 +341,9 @@ class PaddleOCRAPIEngine(OCR):
         width = right - left
         height = bottom - top
 
+        # Reduce height by 30% to compensate for min/max enlargement on tilted text
+        height = int(height * 0.70)
+
         return (left, top, width, height)
 
     def _to_presidio_format(self, word_list: List[dict]) -> dict:

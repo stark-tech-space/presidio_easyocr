@@ -278,13 +278,19 @@ class Server:
         if h_gap > avg_char_width * h_gap_ratio:
             return False
 
+        # STRICT CHECK: top positions must be very close (within 30% of smaller height)
+        # This prevents blocks from different lines being combined even if they overlap vertically
+        min_height = min(h1, h2)
+        top_diff = abs(top1 - top2)
+        if top_diff > min_height * 0.3:
+            return False
+
         # Check vertical alignment: blocks should overlap vertically
         bottom1, bottom2 = top1 + h1, top2 + h2
         overlap_top = max(top1, top2)
         overlap_bottom = min(bottom1, bottom2)
         overlap_height = max(0, overlap_bottom - overlap_top)
 
-        min_height = min(h1, h2)
         if overlap_height < min_height * v_overlap_ratio:
             return False
 
@@ -360,11 +366,13 @@ class Server:
 
             # Multi-block combination match (Bug 1 fix):
             # Try combining adjacent blocks to match target
+            # Limit to max 5 blocks to prevent over-matching
+            MAX_COMBINE_BLOCKS = 5
             for start_idx in range(len(texts)):
                 combined_text = ""
                 combined_indices = []
 
-                for j in range(start_idx, len(texts)):
+                for j in range(start_idx, min(start_idx + MAX_COMBINE_BLOCKS, len(texts))):
                     # Check if adjacent (first block or adjacent to previous)
                     if j == start_idx or self._is_adjacent(
                         ocr_result, combined_indices[-1], j
@@ -374,6 +382,7 @@ class Server:
 
                         # Check if combined text matches target
                         if target in combined_text:
+                            print(f"[Multi-Match] target='{target}' combined='{combined_text}' blocks={[texts[k] for k in combined_indices]}")
                             indices_to_redact.update(combined_indices)
                             break
 
@@ -390,12 +399,8 @@ class Server:
         for i in indices_to_redact:
             x0 = ocr_result["left"][i]
             y0 = ocr_result["top"][i]
-            w = ocr_result["width"][i]
-            h = ocr_result["height"][i]
-            # Reduce height by 15% to avoid covering adjacent lines
-            h_reduced = int(h * 0.85)
-            x1 = x0 + w
-            y1 = y0 + h_reduced
+            x1 = x0 + ocr_result["width"][i]
+            y1 = y0 + ocr_result["height"][i]
             draw.rectangle([x0, y0, x1, y1], fill=color_fill)
 
         return redacted
