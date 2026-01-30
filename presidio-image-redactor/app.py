@@ -250,7 +250,7 @@ class Server:
         idx1: int,
         idx2: int,
         h_gap_ratio: float = 1.5,
-        v_overlap_ratio: float = 0.5
+        v_overlap_ratio: float = 0.8
     ) -> bool:
         """Check if two OCR blocks are spatially adjacent.
 
