@@ -250,7 +250,7 @@ class Server:
         idx1: int,
         idx2: int,
         h_gap_ratio: float = 1.5,
-        v_overlap_ratio: float = 0.8
+        v_overlap_ratio: float = 0.9
     ) -> bool:
         """Check if two OCR blocks are spatially adjacent.
 
@@ -390,8 +390,12 @@ class Server:
         for i in indices_to_redact:
             x0 = ocr_result["left"][i]
             y0 = ocr_result["top"][i]
-            x1 = x0 + ocr_result["width"][i]
-            y1 = y0 + ocr_result["height"][i]
+            w = ocr_result["width"][i]
+            h = ocr_result["height"][i]
+            # Reduce height by 15% to avoid covering adjacent lines
+            h_reduced = int(h * 0.85)
+            x1 = x0 + w
+            y1 = y0 + h_reduced
             draw.rectangle([x0, y0, x1, y1], fill=color_fill)
 
         return redacted
