@@ -320,26 +320,62 @@ class Server:
         # Bug 2 fix: Filter out targets with length < 2
         valid_targets = [t for t in texts_to_redact if len(t) >= 2]
 
-        indices_to_redact = set()
+        # 存储需要遮罩的区域: [(x0, y0, x1, y1), ...]
+        rects_to_redact = []
 
         for target in valid_targets:
             matched = False
             best_score = 0
             best_text = ""
             
+            # 移除 target 中的 * 号用于匹配（如身份证号 B1261***22）
+            target_clean = target.replace('*', '')
+            
             # Single block match: target is substring of OCR text OR fuzzy match
             for i, text in enumerate(texts):
-                # Exact substring match
-                if target in text:
-                    print(f"[Match] target='{target}' ocr_text='{text}' type=substring")
-                    indices_to_redact.add(i)
+                text_clean = text.replace('*', '')
+                
+                # Check if target (without *) is in the text
+                if target_clean in text_clean:
+                    # 找到子串匹配，计算 target 在 text 中的位置比例
+                    start_pos = text_clean.find(target_clean)
+                    end_pos = start_pos + len(target_clean)
+                    
+                    # 计算比例
+                    text_len = max(len(text_clean), 1)
+                    start_ratio = start_pos / text_len
+                    end_ratio = end_pos / text_len
+                    
+                    # 获取 OCR 块的 bbox
+                    block_left = ocr_result["left"][i]
+                    block_top = ocr_result["top"][i]
+                    block_width = ocr_result["width"][i]
+                    block_height = ocr_result["height"][i]
+                    
+                    # 计算 target 部分的 bbox（按比例）
+                    x0 = int(block_left + block_width * start_ratio)
+                    y0 = block_top
+                    x1 = int(block_left + block_width * end_ratio)
+                    y1 = block_top + block_height
+                    
+                    print(f"[Match] target='{target}' ocr_text='{text}' type=substring pos={start_pos}-{end_pos} ratio={start_ratio:.2f}-{end_ratio:.2f}")
+                    rects_to_redact.append((x0, y0, x1, y1))
+                    matched = True
+                
+                # 完全匹配（整个 OCR 块就是 target）
+                elif text_clean == target_clean or target in text:
+                    x0 = ocr_result["left"][i]
+                    y0 = ocr_result["top"][i]
+                    x1 = x0 + ocr_result["width"][i]
+                    y1 = y0 + ocr_result["height"][i]
+                    print(f"[Match] target='{target}' ocr_text='{text}' type=exact")
+                    rects_to_redact.append((x0, y0, x1, y1))
                     matched = True
                 else:
                     # Fuzzy match
                     fuzzy_score = fuzz.ratio(target.lower(), text.lower())
                     
                     # Only use partial_ratio if OCR text is long enough
-                    # to avoid false positives like "5" matching "051年10月26日"
                     min_len = min(len(target), len(text))
                     max_len = max(len(target), len(text))
                     
@@ -355,9 +391,14 @@ class Server:
                         best_score = max_score
                         best_text = text
                     
-                    if max_score >= FUZZY_MATCH_THRESHOLD:
+                    # 模糊匹配必须长度相近，避免误匹配
+                    if max_score >= FUZZY_MATCH_THRESHOLD and min_len / max_len >= 0.5:
+                        x0 = ocr_result["left"][i]
+                        y0 = ocr_result["top"][i]
+                        x1 = x0 + ocr_result["width"][i]
+                        y1 = y0 + ocr_result["height"][i]
                         print(f"[Match] target='{target}' ocr_text='{text}' type=fuzzy score={max_score}")
-                        indices_to_redact.add(i)
+                        rects_to_redact.append((x0, y0, x1, y1))
                         matched = True
             
             # Log if no match found
@@ -366,7 +407,6 @@ class Server:
 
             # Multi-block combination match (Bug 1 fix):
             # Try combining adjacent blocks to match target
-            # Limit to max 5 blocks to prevent over-matching
             MAX_COMBINE_BLOCKS = 5
             for start_idx in range(len(texts)):
                 combined_text = ""
@@ -383,7 +423,13 @@ class Server:
                         # Check if combined text matches target
                         if target in combined_text:
                             print(f"[Multi-Match] target='{target}' combined='{combined_text}' blocks={[texts[k] for k in combined_indices]}")
-                            indices_to_redact.update(combined_indices)
+                            # 合并所有块的 bbox
+                            for idx in combined_indices:
+                                x0 = ocr_result["left"][idx]
+                                y0 = ocr_result["top"][idx]
+                                x1 = x0 + ocr_result["width"][idx]
+                                y1 = y0 + ocr_result["height"][idx]
+                                rects_to_redact.append((x0, y0, x1, y1))
                             break
 
                         # Stop if combined text exceeds target length without match
@@ -396,11 +442,7 @@ class Server:
         redacted = image.copy()
         draw = ImageDraw.Draw(redacted)
 
-        for i in indices_to_redact:
-            x0 = ocr_result["left"][i]
-            y0 = ocr_result["top"][i]
-            x1 = x0 + ocr_result["width"][i]
-            y1 = y0 + ocr_result["height"][i]
+        for (x0, y0, x1, y1) in rects_to_redact:
             draw.rectangle([x0, y0, x1, y1], fill=color_fill)
 
         return redacted
